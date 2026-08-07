@@ -275,18 +275,18 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
 
               {/* Not yet completed by DB */}
               {!completed && (
-                <div className="flex w-full items-center justify-between">
-                      <div className="text-sm text-gray-500">
+                <div className="flex flex-col sm:flex-row w-full items-center justify-between gap-4">
+                      <div className="text-sm text-gray-500 text-center sm:text-left">
                         Step 1: Mark video watched. Step 2: Pass quiz.
                       </div>
-                      <div className="flex gap-3">
+                      <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                         <button
                           onClick={() => {
                             setQuizUnlocked(true);
                             LS.markDone(userId, video.id);
                           }}
                           disabled={quizUnlocked}
-                          className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-300 shadow-sm
+                          className={`w-full sm:w-auto px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-300 shadow-sm flex items-center justify-center gap-2
                             ${!quizUnlocked
                               ? "bg-[#8C345C] text-white hover:bg-[#6b2646] cursor-pointer"
                               : "bg-[#1E544A] text-white cursor-default"}`}
@@ -295,7 +295,7 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
                         </button>
                     
                     {!quizUnlocked ? (
-                      <div className="px-6 py-2.5 bg-gray-100 text-gray-400 rounded-lg font-bold text-sm flex items-center gap-2 border border-gray-200 cursor-not-allowed select-none">
+                      <div className="w-full sm:w-auto px-6 py-2.5 bg-gray-100 text-gray-400 rounded-lg font-bold text-sm flex items-center justify-center gap-2 border border-gray-200 cursor-not-allowed select-none">
                         🔒 Take Quiz
                       </div>
                     ) : (
@@ -313,7 +313,7 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
 
               {/* DB confirmed completed */}
               {completed && (
-                <div className="flex w-full items-center justify-between">
+                <div className="flex flex-col sm:flex-row w-full items-center justify-between gap-4">
                   <div className="text-sm font-bold text-[#1E544A] flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/>
