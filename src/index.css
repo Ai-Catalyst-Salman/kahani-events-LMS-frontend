@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: "Inter", system-ui, sans-serif;
+    background-color: #FBF7F0;
+    color: #2C1B1E;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: #FBF7F0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Bona Nova SC", Georgia, serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* ── Buttons ─────────────────────────────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl 
+           bg-kahani-primary text-white font-body font-semibold text-sm
+           transition-all duration-200 ease-out
+           hover:bg-kahani-primary-dark hover:shadow-kahani-md hover:-translate-y-0.5
+           active:translate-y-0 active:shadow-none
+           focus:outline-none focus:ring-2 focus:ring-kahani-primary focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
+           bg-kahani-secondary text-white font-body font-semibold text-sm
+           transition-all duration-200 ease-out
+           hover:bg-kahani-secondary-dark hover:shadow-kahani-md hover:-translate-y-0.5
+           active:translate-y-0
+           focus:outline-none focus:ring-2 focus:ring-kahani-secondary focus:ring-offset-2;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
+           border-2 border-kahani-primary text-kahani-primary font-body font-semibold text-sm
+           bg-transparent transition-all duration-200 ease-out
+           hover:bg-kahani-primary hover:text-white hover:-translate-y-0.5
+           active:translate-y-0
+           focus:outline-none focus:ring-2 focus:ring-kahani-primary focus:ring-offset-2;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+           text-kahani-text-muted font-body font-medium text-sm
+           transition-all duration-200 ease-out
+           hover:text-kahani-primary hover:bg-kahani-primary/10
+           focus:outline-none focus:ring-2 focus:ring-kahani-primary focus:ring-offset-2;
+  }
+
+  /* ── Cards ───────────────────────────────────────────────── */
+  .card {
+    @apply bg-white rounded-2xl shadow-kahani-sm border border-kahani-border
+           transition-all duration-300 ease-out
+           hover:shadow-kahani-md hover:-translate-y-1;
+  }
+
+  .card-static {
+    @apply bg-white rounded-2xl shadow-kahani-sm border border-kahani-border;
+  }
+
+  /* ── Form inputs ─────────────────────────────────────────── */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl border border-kahani-border bg-white
+           text-kahani-text font-body text-sm
+           placeholder:text-kahani-text-muted/60
+           transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-kahani-primary/50 focus:border-kahani-primary;
+  }
+
+  .input-label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-1.5;
+  }
+
+  /* ── Badges ──────────────────────────────────────────────── */
+  .badge-primary {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold
+           bg-kahani-primary/10 text-kahani-primary;
+  }
+
+  .badge-secondary {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold
+           bg-kahani-secondary/10 text-kahani-secondary;
+  }
+
+  .badge-accent {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold
+           bg-kahani-accent2/20 text-kahani-accent3-dark;
+  }
+
+  /* ── Page wrapper ────────────────────────────────────────── */
+  .page {
+    @apply min-h-screen bg-kahani-cream font-body animate-fade-in;
+  }
+
+  /* ── Section heading ─────────────────────────────────────── */
+  .section-heading {
+    @apply font-heading text-2xl font-bold text-kahani-primary;
+  }
+
+  /* ── Stat card ───────────────────────────────────────────── */
+  .stat-card {
+    @apply card-static p-6 flex flex-col gap-2;
+  }
+
+  /* ── Alert variants ──────────────────────────────────────── */
+  .alert-error {
+    @apply flex items-center gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm;
+  }
+
+  .alert-success {
+    @apply flex items-center gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm;
+  }
+
+  .alert-info {
+    @apply flex items-center gap-3 p-4 rounded-xl bg-kahani-primary/5 border border-kahani-primary/20 text-kahani-primary text-sm;
+  }
+
+  .alert-warning {
+    @apply flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm;
+  }
+}
