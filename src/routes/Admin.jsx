@@ -295,6 +295,7 @@ function VideosTab({ toast }) {
   const [courseId, setCourseId] = useState("");
   const [title, setTitle] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [filterCourse, setFilterCourse] = useState("all");
@@ -326,10 +327,11 @@ function VideosTab({ toast }) {
       course_id: courseId,
       title,
       video_url: videoUrl,
+      transcript: transcript || null,
     });
     if (ok) {
       toast("Video added!", "success");
-      setTitle(""); setVideoUrl(""); setCourseId(""); setShowForm(false);
+      setTitle(""); setVideoUrl(""); setTranscript(""); setCourseId(""); setShowForm(false);
       load();
     } else {
       toast(data?.detail || "Failed to add video", "error");
@@ -414,6 +416,16 @@ function VideosTab({ toast }) {
                 value={videoUrl}
                 onChange={e => setVideoUrl(e.target.value)}
                 required
+              />
+            </div>
+            <div>
+              <label className="input-label">Video Transcription</label>
+              <textarea
+                className="input resize-none mt-1"
+                rows={3}
+                placeholder="Optional text transcription..."
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
               />
             </div>
             <div className="flex flex-wrap gap-3">
@@ -593,10 +605,16 @@ function QuizzesTab({ toast }) {
 
   // New question form state
   const [question, setQuestion] = useState("");
+  const [questionType, setQuestionType] = useState("mcq"); // mcq, true_false, fill_in_blank
   const [options, setOptions] = useState(["", "", "", ""]);
   const [correctIndex, setCorrectIndex] = useState(0);
+  const [correctAnswer, setCorrectAnswer] = useState("");
+  const [explanation, setExplanation] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  
+  // AI Generating state
+  const [generatingAI, setGeneratingAI] = useState(false);
 
   // Load all courses + their videos
   const loadVideos = useCallback(async () => {
@@ -639,41 +657,77 @@ function QuizzesTab({ toast }) {
     setOptions(prev => prev.map((o, i) => i === idx ? val : o));
   }
 
+  async function handleAIGenerate() {
+    if (!selectedVideoId) return;
+    const selectedVideo = allVideos.find(v => v.id === selectedVideoId);
+    if (!selectedVideo?.transcript) {
+      toast("This video has no transcript. Please add a transcript first.", "error");
+      return;
+    }
+    setGeneratingAI(true);
+    const { ok, data } = await api.post(`/quizzes/video/${selectedVideoId}/generate-and-save-quiz`, {
+      transcript: selectedVideo.transcript
+    });
+    if (ok) {
+      toast("AI Generated Questions Successfully!", "success");
+      loadQuestions(selectedVideoId);
+    } else {
+      toast(data?.detail || "Failed to generate AI questions", "error");
+    }
+    setGeneratingAI(false);
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     if (!selectedVideoId) return;
-    const validOptions = options.filter(o => o.trim());
-    if (validOptions.length < 2) {
-      toast("Please provide at least 2 options", "error"); return;
+    
+    let finalOptions = [];
+    let finalCorrectIndex = 0;
+    let finalCorrectAnswer = "";
+
+    if (questionType === "mcq") {
+      finalOptions = options.filter(o => o.trim());
+      if (finalOptions.length < 2) { toast("Please provide at least 2 options", "error"); return; }
+      if (correctIndex >= finalOptions.length) { toast("Correct answer index out of range", "error"); return; }
+      finalCorrectIndex = correctIndex;
+      finalCorrectAnswer = finalOptions[correctIndex];
+    } else if (questionType === "true_false") {
+      finalOptions = ["True", "False"];
+      finalCorrectIndex = correctIndex; // 0 for True, 1 for False
+      finalCorrectAnswer = finalOptions[correctIndex];
+    } else if (questionType === "fill_in_blank") {
+      if (!correctAnswer.trim()) { toast("Please provide correct answer", "error"); return; }
+      finalOptions = [correctAnswer.trim()];
+      finalCorrectIndex = 0;
+      finalCorrectAnswer = correctAnswer.trim();
     }
-    if (correctIndex >= validOptions.length) {
-      toast("Correct answer index out of range", "error"); return;
-    }
+
     setSaving(true);
     
+    const payload = {
+      video_id: selectedVideoId,
+      question: question.trim(),
+      options: finalOptions,
+      correct_option_index: finalCorrectIndex,
+      question_type: questionType,
+      correct_answer: finalCorrectAnswer,
+      explanation: explanation.trim()
+    };
+    
     if (editingId) {
-      const { ok, data } = await api.put(`/admin/questions/${editingId}`, {
-        question: question.trim(),
-        options: validOptions,
-        correct_option_index: correctIndex,
-      });
+      const { ok, data } = await api.put(`/admin/questions/${editingId}`, payload);
       if (ok) {
         toast("Question updated!", "success");
-        setQuestion(""); setOptions(["", "", "", ""]); setCorrectIndex(0); setShowForm(false); setEditingId(null);
+        resetForm();
         loadQuestions(selectedVideoId);
       } else {
         toast(data?.detail || "Failed to update question", "error");
       }
     } else {
-      const { ok, data } = await api.post("/admin/questions", {
-        video_id: selectedVideoId,
-        question: question.trim(),
-        options: validOptions,
-        correct_option_index: correctIndex,
-      });
+      const { ok, data } = await api.post("/admin/questions", payload);
       if (ok) {
         toast("Question added!", "success");
-        setQuestion(""); setOptions(["", "", "", ""]); setCorrectIndex(0); setShowForm(false);
+        resetForm();
         loadQuestions(selectedVideoId);
       } else {
         toast(data?.detail || "Failed to add question", "error");
@@ -682,13 +736,33 @@ function QuizzesTab({ toast }) {
     setSaving(false);
   }
 
+  function resetForm() {
+    setQuestion(""); 
+    setQuestionType("mcq");
+    setOptions(["", "", "", ""]); 
+    setCorrectIndex(0); 
+    setCorrectAnswer("");
+    setExplanation("");
+    setShowForm(false); 
+    setEditingId(null);
+  }
+
   function handleEditClick(q) {
     setEditingId(q.id);
     setQuestion(q.question);
-    let paddedOptions = [...q.options];
-    while(paddedOptions.length < 4) paddedOptions.push("");
-    setOptions(paddedOptions);
-    setCorrectIndex(q.correct_option_index);
+    setQuestionType(q.question_type || "mcq");
+    setExplanation(q.explanation || "");
+    
+    if (q.question_type === "fill_in_blank") {
+      setCorrectAnswer(q.correct_answer || q.options[0]);
+    } else if (q.question_type === "true_false") {
+      setCorrectIndex(q.correct_option_index);
+    } else {
+      let paddedOptions = [...q.options];
+      while(paddedOptions.length < 4) paddedOptions.push("");
+      setOptions(paddedOptions);
+      setCorrectIndex(q.correct_option_index);
+    }
     setShowForm(true);
   }
 
@@ -724,13 +798,26 @@ function QuizzesTab({ toast }) {
             </div>
           </div>
           {selectedVideoId && (
-            <button
-              onClick={() => setShowForm(v => !v)}
-              className="btn-primary flex items-center gap-2 text-sm self-start"
-            >
-              {Icon.plus}
-              {showForm ? "Cancel" : "Add Question"}
-            </button>
+            <div className="flex gap-2 self-start flex-wrap">
+              <button
+                onClick={handleAIGenerate}
+                disabled={generatingAI}
+                className="btn-outline flex items-center gap-2 text-sm border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-60"
+              >
+                {generatingAI ? <LoadingSpinner size="sm" /> : "✨"}
+                {generatingAI ? "AI is Thinking..." : "Auto-Generate with AI"}
+              </button>
+              <button
+                onClick={() => {
+                  if(showForm) resetForm();
+                  else setShowForm(true);
+                }}
+                className="btn-primary flex items-center gap-2 text-sm"
+              >
+                {Icon.plus}
+                {showForm ? "Cancel" : "Add Question"}
+              </button>
+            </div>
           )}
         </div>
 
@@ -775,65 +862,119 @@ function QuizzesTab({ toast }) {
             </h3>
           </div>
           <form onSubmit={handleCreate} className="p-6 space-y-6">
-            <div>
-              <label className="input-label">Question Text *</label>
-              <textarea
-                className="input resize-none mt-1"
-                rows={3}
-                placeholder="e.g. What is the primary rule for on-site event safety?"
-                value={question}
-                onChange={e => setQuestion(e.target.value)}
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="input-label">Question Text *</label>
+                <textarea
+                  className="input resize-none mt-1"
+                  rows={2}
+                  placeholder="e.g. What is the primary rule for on-site event safety?"
+                  value={question}
+                  onChange={e => setQuestion(e.target.value)}
+                  required
+                />
+              </div>
+              
+              <div className="sm:col-span-2">
+                <label className="input-label">Question Type *</label>
+                <select className="input mt-1" value={questionType} onChange={e => setQuestionType(e.target.value)}>
+                  <option value="mcq">Multiple Choice (MCQ)</option>
+                  <option value="true_false">True / False</option>
+                  <option value="fill_in_blank">Fill in the Blank</option>
+                </select>
+              </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="input-label">Answer Options *</label>
-                <span className="text-xs text-kahani-text-muted bg-kahani-cream border border-kahani-border px-2 py-1 rounded">
-                  🔘 Select radio = Correct Answer
-                </span>
-              </div>
-              <div className="space-y-3">
-                {options.map((opt, i) => {
-                  const isCorrect = correctIndex === i;
-                  return (
-                    <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isCorrect ? "border-kahani-secondary/40 bg-kahani-secondary/5" : "border-kahani-border bg-white"}`}>
-                      <input
-                        type="radio"
-                        name="correct"
-                        checked={isCorrect}
-                        onChange={() => setCorrectIndex(i)}
-                        className="w-4 h-4 flex-shrink-0 cursor-pointer"
-                        style={{ accentColor: "#1E544A" }}
-                        title="Mark as correct answer"
-                      />
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${isCorrect ? "bg-kahani-secondary text-white" : "bg-kahani-cream text-kahani-text-muted border border-kahani-border"}`}>
-                        {String.fromCharCode(65 + i)}
+            {questionType === "mcq" && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="input-label">Answer Options *</label>
+                  <span className="text-xs text-kahani-text-muted bg-kahani-cream border border-kahani-border px-2 py-1 rounded">
+                    🔘 Select radio = Correct Answer
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {options.map((opt, i) => {
+                    const isCorrect = correctIndex === i;
+                    return (
+                      <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isCorrect ? "border-kahani-secondary/40 bg-kahani-secondary/5" : "border-kahani-border bg-white"}`}>
+                        <input
+                          type="radio"
+                          name="correct"
+                          checked={isCorrect}
+                          onChange={() => setCorrectIndex(i)}
+                          className="w-4 h-4 flex-shrink-0 cursor-pointer"
+                          style={{ accentColor: "#1E544A" }}
+                          title="Mark as correct answer"
+                        />
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${isCorrect ? "bg-kahani-secondary text-white" : "bg-kahani-cream text-kahani-text-muted border border-kahani-border"}`}>
+                          {String.fromCharCode(65 + i)}
+                        </div>
+                        <input
+                          className="input flex-1 py-2"
+                          placeholder={`Option ${String.fromCharCode(65 + i)}${i >= 2 ? " (optional)" : " (required)"}`}
+                          value={opt}
+                          onChange={e => handleOptionChange(i, e.target.value)}
+                          required={i < 2}
+                        />
+                        {isCorrect && (
+                          <span className="text-xs font-bold text-kahani-secondary flex-shrink-0 flex items-center gap-1">
+                            ✅ Correct
+                          </span>
+                        )}
                       </div>
-                      <input
-                        className="input flex-1 py-2"
-                        placeholder={`Option ${String.fromCharCode(65 + i)}${i >= 2 ? " (optional)" : " (required)"}`}
-                        value={opt}
-                        onChange={e => handleOptionChange(i, e.target.value)}
-                        required={i < 2}
-                      />
-                      {isCorrect && (
-                        <span className="text-xs font-bold text-kahani-secondary flex-shrink-0 flex items-center gap-1">
-                          ✅ Correct
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
+            )}
+            
+            {questionType === "true_false" && (
+              <div>
+                <label className="input-label mb-3 block">Correct Answer *</label>
+                <div className="flex gap-4">
+                  <label className={`flex-1 flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${correctIndex === 0 ? "border-kahani-secondary/40 bg-kahani-secondary/5" : "border-kahani-border bg-white hover:bg-kahani-cream"}`}>
+                    <input type="radio" name="tf_correct" checked={correctIndex === 0} onChange={() => setCorrectIndex(0)} className="w-5 h-5" style={{ accentColor: "#1E544A" }} />
+                    <span className="font-bold text-kahani-text">True</span>
+                  </label>
+                  <label className={`flex-1 flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${correctIndex === 1 ? "border-kahani-secondary/40 bg-kahani-secondary/5" : "border-kahani-border bg-white hover:bg-kahani-cream"}`}>
+                    <input type="radio" name="tf_correct" checked={correctIndex === 1} onChange={() => setCorrectIndex(1)} className="w-5 h-5" style={{ accentColor: "#1E544A" }} />
+                    <span className="font-bold text-kahani-text">False</span>
+                  </label>
+                </div>
+              </div>
+            )}
+            
+            {questionType === "fill_in_blank" && (
+              <div>
+                <label className="input-label">Correct Answer *</label>
+                <input
+                  type="text"
+                  className="input mt-1"
+                  placeholder="e.g. Safety Helmet"
+                  value={correctAnswer}
+                  onChange={e => setCorrectAnswer(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="input-label">Explanation (Optional)</label>
+              <textarea
+                className="input resize-none mt-1"
+                rows={2}
+                placeholder="Explain why this answer is correct..."
+                value={explanation}
+                onChange={e => setExplanation(e.target.value)}
+              />
             </div>
 
             <div className="flex flex-wrap gap-3 pt-2 border-t border-kahani-border">
               <button type="submit" disabled={saving} className="btn-primary disabled:opacity-60">
                 {saving ? "Saving…" : (editingId ? "💾 Update Question" : "💾 Save Question")}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setQuestion(""); setOptions(["","","",""]); setCorrectIndex(0); setEditingId(null); }} className="btn-ghost">
+              <button type="button" onClick={resetForm} className="btn-ghost">
                 Cancel
               </button>
             </div>
@@ -883,8 +1024,8 @@ function QuizzesTab({ toast }) {
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted w-10">#</th>
                     <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted">Question</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted">Options</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted">Correct Answer</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted">Options & Answer</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted">Explanation</th>
                     <th className="text-right px-4 py-3 text-xs font-bold uppercase tracking-wider text-kahani-text-muted w-20">Action</th>
                   </tr>
                 </thead>
@@ -900,39 +1041,50 @@ function QuizzesTab({ toast }) {
 
                       {/* Question Text */}
                       <td className="px-4 py-4 max-w-[220px]">
-                        <p className="font-semibold text-kahani-text text-sm leading-relaxed line-clamp-3">
-                          {q.question}
-                        </p>
-                      </td>
-
-                      {/* All Options */}
-                      <td className="px-4 py-4">
-                        <div className="flex flex-col gap-1.5">
-                          {q.options.map((opt, oi) => (
-                            <div
-                              key={oi}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                                oi === q.correct_option_index
-                                  ? "bg-kahani-secondary/10 border-kahani-secondary/30 text-kahani-secondary"
-                                  : "bg-white border-kahani-border text-kahani-text-muted"
-                              }`}
-                            >
-                              <span className="font-bold w-4">{String.fromCharCode(65 + oi)}.</span>
-                              <span className="truncate max-w-[140px]">{opt}</span>
-                              {oi === q.correct_option_index && <span>✅</span>}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* Correct Answer highlight */}
-                      <td className="px-4 py-4">
-                        <div className="flex items-start gap-2">
-                          <span className="text-lg">✅</span>
-                          <span className="text-sm font-bold text-kahani-secondary leading-snug">
-                            {String.fromCharCode(65 + q.correct_option_index)}. {q.options[q.correct_option_index]}
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-kahani-text-muted bg-kahani-cream border border-kahani-border px-1.5 py-0.5 rounded w-max">
+                            {q.question_type === "mcq" ? "MCQ" : q.question_type === "true_false" ? "True/False" : "Fill-in-blank"}
                           </span>
+                          <p className="font-semibold text-kahani-text text-sm leading-relaxed line-clamp-3">
+                            {q.question}
+                          </p>
                         </div>
+                      </td>
+
+                      {/* Options & Answer */}
+                      <td className="px-4 py-4">
+                        {q.question_type === "fill_in_blank" ? (
+                           <div className="flex items-start gap-2">
+                             <span className="text-lg">✅</span>
+                             <span className="text-sm font-bold text-kahani-secondary leading-snug">
+                               {q.correct_answer || q.options[0]}
+                             </span>
+                           </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {q.options.map((opt, oi) => (
+                              <div
+                                key={oi}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                                  oi === q.correct_option_index
+                                    ? "bg-kahani-secondary/10 border-kahani-secondary/30 text-kahani-secondary"
+                                    : "bg-white border-kahani-border text-kahani-text-muted"
+                                }`}
+                              >
+                                {q.question_type === "mcq" && <span className="font-bold w-4">{String.fromCharCode(65 + oi)}.</span>}
+                                <span className="truncate max-w-[140px]">{opt}</span>
+                                {oi === q.correct_option_index && <span>✅</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Explanation */}
+                      <td className="px-4 py-4 max-w-[200px]">
+                        <p className="text-xs text-gray-500 italic line-clamp-3">
+                          {q.explanation || "No explanation"}
+                        </p>
                       </td>
 
                       {/* Edit & Delete */}

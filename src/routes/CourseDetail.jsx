@@ -5,7 +5,7 @@
 //   Unlocks "Mark as Completed" ONLY when the user watches up to the end (duration).
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -45,6 +45,25 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
   const [quizUnlocked, setQuizUnlocked] = useState(() => LS.isDone(userId, video.id));
 
   const lastSaveRef = useRef(0);
+  const navigate = useNavigate();
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+
+  async function handleTakeQuiz() {
+    setGeneratingQuiz(true);
+    const { ok, data } = await api.post(`/quizzes/video/${video.id}/generate-and-assign-quiz`, { user_id: userId });
+    setGeneratingQuiz(false);
+    if (ok) {
+      navigate(`/quiz/${video.id}`, {
+        state: { 
+          courseId: course.id, 
+          quizAttemptId: data.quiz_attempt_id,
+          generatedQuestions: data.questions
+        }
+      });
+    } else {
+      alert("Failed to generate quiz: " + (data?.detail || "Unknown error"));
+    }
+  }
 
   // ── postMessage listener (primary & fallback player.js path) ──
   const handleMessage = useCallback((e) => {
@@ -240,6 +259,16 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
               </div>
             )}
 
+            {/* ── Transcription ── */}
+            {video.transcript && isExpanded && (
+              <div className="mt-4 bg-[#FBF7F0] p-4 rounded-xl border border-[#E8DDD5]">
+                <h4 className="text-sm font-bold text-[#1E544A] mb-2">Transcription</h4>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                  {video.transcript}
+                </div>
+              </div>
+            )}
+
             {/* ── Real Progress Bar (Actual video length) ── */}
             {!completed && duration > 0 && !canComplete && (
               <div className="mt-3">
@@ -299,13 +328,13 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
                         🔒 Take Quiz
                       </div>
                     ) : (
-                      <Link
-                        to={`/quiz/${video.id}`}
-                        state={{ courseId: course.id }}
-                        className="w-full sm:w-auto px-6 py-2.5 bg-[#8C345C] text-white rounded-lg font-bold hover:bg-[#6b2646] transition-colors shadow-md flex items-center justify-center gap-2"
+                      <button
+                        onClick={handleTakeQuiz}
+                        disabled={generatingQuiz}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-[#8C345C] text-white rounded-lg font-bold hover:bg-[#6b2646] transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-70"
                       >
-                        Take Quiz to Complete
-                      </Link>
+                        {generatingQuiz ? "AI is crafting your unique quiz..." : "Take Quiz to Complete"}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -320,13 +349,13 @@ function VideoRow({ video, index, completed, isLocked, onMarkComplete, completin
                     </svg>
                     Video & Quiz Completed
                   </div>
-                  <Link
-                    to={`/quiz/${video.id}`}
-                    state={{ courseId: course.id }}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-gray-100 text-[#1E544A] rounded-lg font-bold hover:bg-gray-200 transition-colors shadow-sm text-center text-sm flex items-center justify-center gap-2 border border-gray-200"
+                  <button
+                    onClick={handleTakeQuiz}
+                    disabled={generatingQuiz}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-gray-100 text-[#1E544A] rounded-lg font-bold hover:bg-gray-200 transition-colors shadow-sm text-center text-sm flex items-center justify-center gap-2 border border-gray-200 disabled:opacity-70"
                   >
-                    Retake Quiz
-                  </Link>
+                    {generatingQuiz ? "AI is crafting a fresh quiz..." : "Retake Quiz"}
+                  </button>
                 </div>
               )}
             </div>
