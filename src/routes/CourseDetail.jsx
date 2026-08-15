@@ -407,8 +407,10 @@ export default function CourseDetail() {
     }
   }, [user, course]);
 
-  const completedCount = completedIds.size;
   const totalVideos    = course?.videos?.length || 0;
+  const completedCount = course?.videos 
+    ? course.videos.filter(video => completedIds.has(video.id)).length 
+    : 0;
 
   return (
     <div className="page bg-[#FBF7F0] min-h-screen pb-16">
