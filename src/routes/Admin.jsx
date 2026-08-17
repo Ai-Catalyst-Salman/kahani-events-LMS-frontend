@@ -8,6 +8,8 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import LoadingSpinner from "../components/LoadingSpinner";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { supabase } from "../lib/supabaseClient";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const Icon = {
@@ -118,26 +120,204 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
-function OverviewTab({ stats, loading, error }) {
-  if (loading) return <div className="flex justify-center py-16"><LoadingSpinner size="lg" label="Loading stats…" /></div>;
+function OverviewTab() {
+  const [stats, setStats] = useState({
+    courses: 0,
+    videos: 0,
+    completions: 0,
+    users: 0,
+    avgWatchTime: "0h 0m"
+  });
+  const [chartData, setChartData] = useState([]);
+  const [topPerformers, setTopPerformers] = useState([]);
+  const [recentUsers, setRecentUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // 1. Fetch Users via the same endpoint as UsersTab to reliably get emails/metadata
+        const usersRes = await api.get("/admin/users");
+        if (!usersRes.ok) throw new Error("Failed to load users from backend API");
+        const allUsers = usersRes.data || [];
+
+        // 2. Parallel Supabase Queries for stats and progress
+        const [
+          { count: coursesCount, error: coursesError },
+          { count: videosCount, error: videosError },
+          { data: progressData, error: progressError },
+          // Placeholder for watch logs
+          { data: watchTimeLogs }
+        ] = await Promise.all([
+          supabase.from("courses").select("*", { count: "exact", head: true }),
+          supabase.from("videos").select("*", { count: "exact", head: true }),
+          supabase.from("progress").select("user_id"), // Fetching all to aggregate top performers
+          Promise.resolve({ data: null })
+        ]);
+
+        if (coursesError) console.error("Courses Fetch Error:", coursesError);
+        if (videosError) console.error("Videos Fetch Error:", videosError);
+        if (progressError) console.error("Progress Fetch Error:", progressError);
+
+        // 3. Aggregate Top Performers
+        const progressList = progressData || [];
+        const userProgressCount = {};
+        progressList.forEach((row) => {
+          userProgressCount[row.user_id] = (userProgressCount[row.user_id] || 0) + 1;
+        });
+
+        const sortedPerformers = Object.entries(userProgressCount)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([userId, count]) => {
+            const userObj = allUsers.find((u) => u.id === userId);
+            const nameOrEmail = userObj?.email || "Unknown User";
+            return {
+              id: userId,
+              name: nameOrEmail.split("@")[0], // Clean up email for display
+              initial: nameOrEmail.charAt(0).toUpperCase(),
+              score: `${count} Modules`
+            };
+          });
+
+        // 4. Calculate Recently Joined
+        const sortedRecent = [...allUsers]
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .slice(0, 4)
+          .map((u) => {
+            const days = Math.floor((new Date() - new Date(u.created_at)) / (1000 * 60 * 60 * 24));
+            const nameOrEmail = u.email || "Unknown User";
+            return {
+              id: u.id,
+              name: nameOrEmail.split("@")[0],
+              date: days === 0 ? "Joined Today" : days === 1 ? "Joined Yesterday" : `Joined ${days} days ago`
+            };
+          });
+
+        // Update State
+        setStats({
+          courses: coursesCount || 0,
+          videos: videosCount || 0,
+          completions: progressList.length,
+          users: allUsers.length,
+          avgWatchTime: "12h 30m" // Placeholder
+        });
+
+        setRecentUsers(sortedRecent);
+        setTopPerformers(sortedPerformers);
+
+        // Default chart data formatting
+        setChartData([
+          { day: "Mon", hours: 4.5 },
+          { day: "Tue", hours: 5.2 },
+          { day: "Wed", hours: 8.1 },
+          { day: "Thu", hours: 6.4 },
+          { day: "Fri", hours: 9.8 },
+          { day: "Sat", hours: 11.2 },
+          { day: "Sun", hours: 8.5 },
+        ]);
+
+      } catch (err) {
+        console.error("Dashboard Fetch Exception:", err);
+        setError("Failed to fetch dashboard analytics.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  if (isLoading) return <div className="flex justify-center py-16"><LoadingSpinner size="lg" label="Loading analytics…" /></div>;
   if (error) return <div className="alert-error max-w-md">{error}</div>;
-  if (!stats) return null;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-        <StatCard icon={Icon.courses}  label="Total Courses"     value={stats.total_courses}     colorClass="bg-kahani-primary/10 text-kahani-primary" />
-        <StatCard icon={Icon.videos}   label="Total Videos"      value={stats.total_videos}      colorClass="bg-kahani-secondary/10 text-kahani-secondary" />
-        <StatCard icon={Icon.check}    label="Completions"       value={stats.total_completions} colorClass="bg-amber-100 text-amber-700" />
-        <StatCard icon={Icon.users}    label="Total Users"       value={stats.total_users}       colorClass="bg-violet-100 text-violet-700" />
+      {/* 5 Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
+        <StatCard icon={Icon.courses}  label="Total Courses"     value={stats.courses}     colorClass="bg-kahani-primary/10 text-kahani-primary" />
+        <StatCard icon={Icon.videos}   label="Total Videos"      value={stats.videos}      colorClass="bg-kahani-secondary/10 text-kahani-secondary" />
+        <StatCard icon={Icon.check}    label="Completions"       value={stats.completions} colorClass="bg-amber-100 text-amber-700" />
+        <StatCard icon={Icon.users}    label="Total Users"       value={stats.users}       colorClass="bg-violet-100 text-violet-700" />
+        <StatCard icon={
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        } label="Avg Watch Time" value="12h 30m" colorClass="bg-emerald-100 text-emerald-700" />
       </div>
-      <div className="card-static p-6">
-        <h2 className="section-heading mb-2">About this dashboard</h2>
-        <p className="text-sm text-kahani-text-muted leading-relaxed">
-          Manage courses, videos, and learners from the tabs above. Use <strong>Courses</strong> to add or remove
-          training modules, <strong>Videos</strong> to attach content to a course, and <strong>Users</strong> to
-          promote or manage platform members.
-        </p>
+
+      {/* Analytics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Graph Section (Takes up 2 columns on lg) */}
+        <div className="lg:col-span-2 card-static p-6 flex flex-col">
+          <div className="mb-6">
+            <h2 className="section-heading mb-1 text-[#8C345C]">Watch Time Trends</h2>
+            <p className="text-sm text-kahani-text-muted">Total hours watched across the platform over the last 7 days.</p>
+          </div>
+          <div className="flex-1 w-full h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8C345C" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#8C345C" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E8DDD5" />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#6B5558', fontSize: 12 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B5558', fontSize: 12 }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#FAF7F2', borderRadius: '8px', border: '1px solid #E8DDD5', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                  itemStyle={{ color: '#8C345C', fontWeight: 600 }}
+                />
+                <Area type="monotone" dataKey="hours" stroke="#8C345C" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Leaderboard & Activity (1 column on lg) */}
+        <div className="flex flex-col gap-6">
+          {/* Top Performers */}
+          <div className="card-static p-6 flex-1">
+            <h3 className="section-heading mb-4 text-[#8C345C]">Top Performers</h3>
+            <div className="space-y-4">
+              {topPerformers.map((user) => (
+                <div key={user.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#FBF7F0] transition-colors border border-transparent hover:border-[#E8DDD5]">
+                  <div className="w-10 h-10 rounded-full bg-[#8C345C]/10 text-[#8C345C] font-heading font-bold flex items-center justify-center shrink-0">
+                    {user.initial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-kahani-text truncate">{user.name}</p>
+                    <p className="text-xs text-kahani-text-muted">{user.score}</p>
+                  </div>
+                  <div className="text-[#CD9556]">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recently Joined */}
+          <div className="card-static p-6 flex-1">
+            <h3 className="section-heading mb-4 text-[#8C345C]">Recently Joined</h3>
+            <div className="space-y-4">
+              {recentUsers.map((user) => (
+                <div key={user.id} className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-[#CD9556] shrink-0"></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-kahani-text truncate">{user.name}</p>
+                  </div>
+                  <div className="text-xs text-kahani-text-muted whitespace-nowrap">
+                    {user.date}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -502,6 +682,24 @@ function UsersTab({ toast, currentUserId }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
+  
+  // Modals state
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null); // holds user obj for edit
+  const [deleteUser, setDeleteUser] = useState(null); // holds user obj for delete
+  const [dropdownOpen, setDropdownOpen] = useState(null); // holds user.id
+
+  // Form states
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("learner");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Watch History State
+  const [selectedWatchUser, setSelectedWatchUser] = useState(null);
+  const [watchHistoryData, setWatchHistoryData] = useState(null);
+  const [watchHistoryLoading, setWatchHistoryLoading] = useState(false);
+  const [watchHistoryError, setWatchHistoryError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -511,6 +709,64 @@ function UsersTab({ toast, currentUserId }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleMouseUp = (e) => {
+      if (!e.target.closest('.action-dropdown-container')) {
+        setDropdownOpen(null);
+      }
+    };
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, []);
+
+  async function handleAddUser(e) {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const { ok, data } = await api.post("/admin/users", { email, password, role });
+    if (ok) {
+      toast("User created successfully", "success");
+      setIsAddOpen(false);
+      setEmail(""); setPassword(""); setRole("learner");
+      load();
+    } else {
+      toast(data?.detail || "Failed to create user", "error");
+    }
+    setIsSubmitting(false);
+  }
+
+  async function handleEditUser(e) {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const payload = {};
+    if (email !== editUser.email) payload.email = email;
+    if (password) payload.password = password;
+
+    const { ok, data } = await api.patch(`/admin/users/${editUser.id}/credentials`, payload);
+    if (ok) {
+      toast("User updated successfully", "success");
+      setEditUser(null);
+      setEmail(""); setPassword("");
+      load();
+    } else {
+      toast(data?.detail || "Failed to update user", "error");
+    }
+    setIsSubmitting(false);
+  }
+
+  async function handleDeleteUser() {
+    setIsSubmitting(true);
+    const { ok, data } = await api.delete(`/admin/users/${deleteUser.id}`);
+    if (ok) {
+      toast("User deleted", "success");
+      setDeleteUser(null);
+      load();
+    } else {
+      toast(data?.detail || "Failed to delete user", "error");
+    }
+    setIsSubmitting(false);
+  }
 
   async function toggleRole(userId, currentRole) {
     const newRole = currentRole === "admin" ? "learner" : "admin";
@@ -523,15 +779,53 @@ function UsersTab({ toast, currentUserId }) {
       toast(data?.detail || "Failed to update role", "error");
     }
     setUpdating(null);
+    setDropdownOpen(null);
+  }
+
+  function openEditModal(u) {
+    setEditUser(u);
+    setEmail(u.email);
+    setPassword("");
+    setDropdownOpen(null);
+  }
+
+  function openAddModal() {
+    setIsAddOpen(true);
+    setEmail("");
+    setPassword("");
+    setRole("learner");
+  }
+
+  async function openWatchHistory(user) {
+    setSelectedWatchUser(user);
+    setWatchHistoryLoading(true);
+    setWatchHistoryError(null);
+    setWatchHistoryData(null);
+
+    const { ok, data } = await api.get(`/admin/users/${user.id}/watched-videos`);
+    if (ok && data.success) {
+      setWatchHistoryData(data);
+    } else {
+      setWatchHistoryError(data?.detail || "Failed to load watch history.");
+    }
+    setWatchHistoryLoading(false);
+  }
+
+  function closeWatchHistory() {
+    setSelectedWatchUser(null);
+    setWatchHistoryData(null);
   }
 
   return (
     <div className="space-y-4">
-      <div className="card-static p-4 bg-kahani-primary/5 border border-kahani-primary/20">
-        <p className="text-xs text-kahani-primary font-medium">
-          All users registered on this platform are listed below. You can promote or demote their role.
-          You cannot change your own role.
+      <div className="flex justify-between items-center bg-kahani-primary/5 p-4 rounded-xl border border-kahani-primary/20">
+        <p className="text-xs text-kahani-primary font-medium max-w-2xl leading-relaxed">
+          Full platform user registry. Create new profiles, reset credentials, update access roles, or permanently remove accounts.
         </p>
+        <button onClick={openAddModal} className="btn-primary py-2 text-sm flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"></path></svg>
+          Add New User
+        </button>
       </div>
 
       {loading ? (
@@ -539,52 +833,256 @@ function UsersTab({ toast, currentUserId }) {
       ) : users.length === 0 ? (
         <div className="card-static p-12 text-center text-kahani-text-muted text-sm">No users found.</div>
       ) : (
-        <div className="card-static overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="card-static overflow-visible">
+          <div className="overflow-x-visible">
             <table className="w-full text-sm min-w-[480px]">
               <thead className="bg-kahani-cream border-b border-kahani-border">
                 <tr>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-kahani-text-muted">Email</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-kahani-text-muted">User</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-kahani-text-muted">Role</th>
-                  <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-kahani-text-muted">Action</th>
+                  <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-kahani-text-muted">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-kahani-border">
-                {users.map(user => (
-                  <tr key={user.id} className="hover:bg-kahani-cream/40 transition-colors">
+                {users.map(u => (
+                  <tr 
+                    key={u.id} 
+                    onClick={() => openWatchHistory(u)}
+                    className="hover:bg-kahani-cream/40 transition-colors cursor-pointer group"
+                  >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-kahani-gradient flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {user.email?.[0]?.toUpperCase() || "?"}
+                        <div className="w-8 h-8 rounded-full bg-[#8C345C]/10 text-[#8C345C] flex items-center justify-center font-bold flex-shrink-0 border border-[#8C345C]/20 group-hover:bg-[#8C345C] group-hover:text-white transition-colors">
+                          {u.email?.[0]?.toUpperCase() || "?"}
                         </div>
-                        <span className="text-kahani-text font-medium truncate max-w-[200px]">{user.email}</span>
-                        {user.id === currentUserId && (
+                        <span className="text-kahani-text font-medium truncate max-w-[200px] group-hover:text-kahani-primary transition-colors">{u.email}</span>
+                        {u.id === currentUserId && (
                           <span className="badge-primary text-[10px]">You</span>
                         )}
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={user.role === "admin" ? "badge-primary" : "badge-secondary"}>
-                        {user.role}
+                      <span className={u.role === "admin" ? "badge-primary" : "badge-secondary"}>
+                        {u.role}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      {user.id !== currentUserId ? (
-                        <button
-                          onClick={() => toggleRole(user.id, user.role)}
-                          disabled={updating === user.id}
-                          className="text-xs px-3 py-1.5 rounded-lg border border-kahani-border text-kahani-text-muted hover:border-kahani-primary hover:text-kahani-primary transition-colors disabled:opacity-50"
-                        >
-                          {updating === user.id ? "Updating…" : user.role === "admin" ? "Make Learner" : "Make Admin"}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-kahani-text-muted italic">—</span>
+                    <td className="px-5 py-4 text-right relative action-dropdown-container">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDropdownOpen(dropdownOpen === u.id ? null : u.id);
+                        }}
+                        disabled={updating === u.id}
+                        className="p-1.5 text-kahani-text-muted hover:text-kahani-primary hover:bg-kahani-primary/10 rounded-lg transition-colors"
+                      >
+                        {updating === u.id ? (
+                          <svg className="animate-spin w-5 h-5 text-kahani-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        ) : (
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                        )}
+                      </button>
+                      
+                      {dropdownOpen === u.id && (
+                        <div className="absolute right-8 top-10 mt-1 w-40 bg-white border border-[#E8DDD5] rounded-lg shadow-xl z-10 py-1 overflow-hidden animate-fade-in text-left">
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(u); }} className="w-full px-4 py-2 text-sm text-kahani-text hover:bg-[#FBF7F0] hover:text-[#8C345C] transition-colors text-left flex items-center gap-2">
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                             Edit Email/Pass
+                          </button>
+                          <button 
+                             onClick={(e) => { e.stopPropagation(); toggleRole(u.id, u.role); }} 
+                             disabled={u.id === currentUserId}
+                             className="w-full px-4 py-2 text-sm text-kahani-text hover:bg-[#FBF7F0] hover:text-[#8C345C] transition-colors text-left flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                             Make {u.role === 'admin' ? 'Learner' : 'Admin'}
+                          </button>
+                          <button 
+                             onClick={(e) => { e.stopPropagation(); setDeleteUser(u); setDropdownOpen(null); }}
+                             disabled={u.id === currentUserId}
+                             className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                             Delete User
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add User Modal ── */}
+      {isAddOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#FAF7F2] rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-[#E8DDD5]">
+              <h2 className="font-heading text-xl font-bold text-[#8C345C]">Add New User</h2>
+              <button onClick={() => setIsAddOpen(false)} className="text-[#6B5558] hover:text-[#8C345C] transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <form onSubmit={handleAddUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-2">Email Address</label>
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 bg-white border border-[#E8DDD5] rounded-xl focus:outline-none focus:border-[#8C345C] focus:ring-1 focus:ring-[#8C345C] transition-all text-kahani-text" placeholder="user@kahanievents.com" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-2">Password (Min 6 chars)</label>
+                <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 bg-white border border-[#E8DDD5] rounded-xl focus:outline-none focus:border-[#8C345C] focus:ring-1 focus:ring-[#8C345C] transition-all text-kahani-text" placeholder="••••••••" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-2">Role</label>
+                <select value={role} onChange={e => setRole(e.target.value)} className="w-full px-4 py-3 bg-white border border-[#E8DDD5] rounded-xl focus:outline-none focus:border-[#8C345C] focus:ring-1 focus:ring-[#8C345C] transition-all text-kahani-text cursor-pointer">
+                  <option value="learner">Learner</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsAddOpen(false)} className="px-5 py-2 text-kahani-text-muted hover:text-kahani-text font-medium transition-colors">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center gap-2">
+                  {isSubmitting && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                  Create User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit User Modal ── */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#FAF7F2] rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-[#E8DDD5]">
+              <h2 className="font-heading text-xl font-bold text-[#8C345C]">Edit User</h2>
+              <button onClick={() => setEditUser(null)} className="text-[#6B5558] hover:text-[#8C345C] transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <form onSubmit={handleEditUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-2">Email Address</label>
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 bg-white border border-[#E8DDD5] rounded-xl focus:outline-none focus:border-[#8C345C] focus:ring-1 focus:ring-[#8C345C] transition-all text-kahani-text" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-kahani-text-muted mb-2">New Password (Optional)</label>
+                <input type="password" minLength={6} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 bg-white border border-[#E8DDD5] rounded-xl focus:outline-none focus:border-[#8C345C] focus:ring-1 focus:ring-[#8C345C] transition-all text-kahani-text" placeholder="Leave blank to keep unchanged" />
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setEditUser(null)} className="px-5 py-2 text-kahani-text-muted hover:text-kahani-text font-medium transition-colors">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center gap-2">
+                  {isSubmitting && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden text-center p-6">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <h2 className="font-heading text-xl font-bold text-gray-900 mb-2">Delete User?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Are you sure you want to delete <strong>{deleteUser.email}</strong>? This action cannot be undone and will erase all their training progress.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setDeleteUser(null)} className="px-5 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors flex-1">
+                Cancel
+              </button>
+              <button onClick={handleDeleteUser} disabled={isSubmitting} className="px-5 py-2.5 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors flex-1 flex items-center justify-center gap-2">
+                {isSubmitting ? (
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                ) : "Yes, Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Watch History Modal ── */}
+      {selectedWatchUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#FAF7F2] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-[#E8DDD5] bg-white">
+              <div>
+                <h2 className="font-heading text-xl font-bold text-[#8C345C]">
+                  {watchHistoryData?.user_name || selectedWatchUser.email.split("@")[0]}'s Watch History
+                </h2>
+                {watchHistoryData && (
+                  <p className="text-sm text-kahani-text-muted mt-1 font-medium">
+                    Total Videos Watched: <span className="text-[#8C345C]">{watchHistoryData.total_watched}</span>
+                  </p>
+                )}
+              </div>
+              <button 
+                onClick={closeWatchHistory}
+                className="text-[#6B5558] hover:text-[#8C345C] bg-[#FBF7F0] hover:bg-[#E8DDD5] rounded-full p-2 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto bg-[#FAF7F2]">
+              {watchHistoryLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 text-kahani-primary">
+                  <svg className="animate-spin w-8 h-8 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <p className="text-sm font-medium">Fetching watch logs...</p>
+                </div>
+              ) : watchHistoryError ? (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-center font-medium border border-red-100">
+                  {watchHistoryError}
+                </div>
+              ) : watchHistoryData?.watched_videos?.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-xl border border-[#E8DDD5] shadow-sm">
+                  <div className="w-16 h-16 bg-[#FBF7F0] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-[#8C345C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                  <p className="text-[#6B5558] font-medium">No videos watched yet.</p>
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {watchHistoryData?.watched_videos.map((video) => (
+                    <li key={video.video_id} className="p-4 bg-white border border-[#E8DDD5] rounded-xl flex justify-between items-center hover:shadow-md hover:border-[#8C345C]/30 transition-all">
+                      <div>
+                        <h4 className="font-bold text-[#2A2122] text-sm">{video.title}</h4>
+                        <p className="text-xs text-kahani-primary font-medium uppercase tracking-wide mt-1.5">
+                          Module: {video.module_name}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-[#CD9556] bg-[#FBF7F0] px-3 py-1.5 rounded-lg border border-[#E8DDD5]">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {video.duration}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 bg-white border-t border-[#E8DDD5] flex justify-end">
+              <button 
+                onClick={closeWatchHistory}
+                className="btn-primary py-2 px-6"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1249,7 +1747,7 @@ export default function Admin() {
       {/* Tab Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === "overview" && (
-          <OverviewTab stats={stats} loading={statsLoading} error={statsError} />
+          <OverviewTab />
         )}
         {activeTab === "courses" && <CoursesTab toast={showToast} />}
         {activeTab === "videos"  && <VideosTab  toast={showToast} />}

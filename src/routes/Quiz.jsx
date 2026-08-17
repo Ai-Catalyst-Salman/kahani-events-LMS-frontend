@@ -110,7 +110,7 @@ export default function Quiz() {
             </div>
             <div>
               <h1 className="font-heading text-2xl font-bold text-[#1E544A]">Dynamic AI Quiz</h1>
-              <p className="text-sm text-[#1E544A]/60">Score at least 67% to pass</p>
+              <p className="text-sm text-[#1E544A]/60">You must score at least 80% to pass this module.</p>
             </div>
           </div>
         </div>
@@ -162,7 +162,7 @@ export default function Quiz() {
             <div className="bg-white border border-[#E8DDD5] rounded-2xl p-5 shadow-sm flex items-center justify-between">
               <span className="text-sm font-bold text-[#1E544A]">{questions.length} Question{questions.length > 1 ? "s" : ""}</span>
               <span className="text-xs bg-[#8C345C]/10 text-[#8C345C] px-3 py-1.5 rounded-full font-bold border border-[#8C345C]/20">
-                Pass: {Math.max(1, Math.round(questions.length * 0.67))} / {questions.length} correct
+                Pass: {Math.ceil(questions.length * 0.80)} / {questions.length} correct
               </span>
             </div>
 
@@ -275,7 +275,7 @@ export default function Quiz() {
               <p className={`text-sm ${result.passed ? "text-[#1E544A]/70" : "text-red-600/80"}`}>
                 {result.passed
                   ? "Excellent! You've demonstrated strong understanding of this module."
-                  : `You need at least ${result.pass_threshold} correct answers to pass. Review the video and try again.`}
+                  : `Score: ${Math.round((result.score / result.total) * 100)}%. You need 80% to pass. Please review the video and try again.`}
               </p>
             </div>
 
