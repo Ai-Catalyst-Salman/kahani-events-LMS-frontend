@@ -144,44 +144,36 @@ function OverviewTab() {
         if (!usersRes.ok) throw new Error("Failed to load users from backend API");
         const allUsers = usersRes.data || [];
 
-        // 2. Parallel Supabase Queries for stats and progress
+        // 2. Parallel Queries for stats and top performers
         const [
           { count: coursesCount, error: coursesError },
           { count: videosCount, error: videosError },
-          { data: progressData, error: progressError },
+          topPerformersRes,
+          progressCountRes,
           // Placeholder for watch logs
           { data: watchTimeLogs }
         ] = await Promise.all([
           supabase.from("courses").select("*", { count: "exact", head: true }),
           supabase.from("videos").select("*", { count: "exact", head: true }),
-          supabase.from("progress").select("user_id"), // Fetching all to aggregate top performers
+          api.get("/admin/dashboard/top-performers"),
+          supabase.from("progress").select("*", { count: "exact", head: true }),
           Promise.resolve({ data: null })
         ]);
 
         if (coursesError) console.error("Courses Fetch Error:", coursesError);
         if (videosError) console.error("Videos Fetch Error:", videosError);
-        if (progressError) console.error("Progress Fetch Error:", progressError);
+        if (progressCountRes.error) console.error("Progress Fetch Error:", progressCountRes.error);
 
-        // 3. Aggregate Top Performers
-        const progressList = progressData || [];
-        const userProgressCount = {};
-        progressList.forEach((row) => {
-          userProgressCount[row.user_id] = (userProgressCount[row.user_id] || 0) + 1;
-        });
-
-        const sortedPerformers = Object.entries(userProgressCount)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .map(([userId, count]) => {
-            const userObj = allUsers.find((u) => u.id === userId);
-            const nameOrEmail = userObj?.email || "Unknown User";
-            return {
-              id: userId,
-              name: nameOrEmail.split("@")[0], // Clean up email for display
-              initial: nameOrEmail.charAt(0).toUpperCase(),
-              score: `${count} Modules`
-            };
-          });
+        // 3. Format Top Performers
+        let sortedPerformers = [];
+        if (topPerformersRes.ok && topPerformersRes.data) {
+          sortedPerformers = topPerformersRes.data.map(user => ({
+            id: user.user_id,
+            name: user.name,
+            initial: user.name.charAt(0).toUpperCase(),
+            score: `${user.completed_modules} Modules`
+          }));
+        }
 
         // 4. Calculate Recently Joined
         const sortedRecent = [...allUsers]
@@ -201,7 +193,7 @@ function OverviewTab() {
         setStats({
           courses: coursesCount || 0,
           videos: videosCount || 0,
-          completions: progressList.length,
+          completions: progressCountRes.count || 0,
           users: allUsers.length,
           avgWatchTime: "12h 30m" // Placeholder
         });
