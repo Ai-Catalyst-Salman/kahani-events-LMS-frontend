@@ -236,15 +236,12 @@ function OverviewTab() {
 
   return (
     <div className="space-y-6">
-      {/* 5 Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         <StatCard icon={Icon.courses}  label="Total Courses"     value={stats.courses}     colorClass="bg-kahani-primary/10 text-kahani-primary" />
         <StatCard icon={Icon.videos}   label="Total Videos"      value={stats.videos}      colorClass="bg-kahani-secondary/10 text-kahani-secondary" />
         <StatCard icon={Icon.check}    label="Completions"       value={stats.completions} colorClass="bg-amber-100 text-amber-700" />
         <StatCard icon={Icon.users}    label="Total Users"       value={stats.users}       colorClass="bg-violet-100 text-violet-700" />
-        <StatCard icon={
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        } label="Avg Watch Time" value="12h 30m" colorClass="bg-emerald-100 text-emerald-700" />
       </div>
 
       {/* Analytics Grid */}
