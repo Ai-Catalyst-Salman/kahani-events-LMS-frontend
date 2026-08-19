@@ -30,7 +30,7 @@ export default function Home() {
               </div>
 
               <h1 className="font-heading text-5xl lg:text-7xl font-bold text-[#8C345C] leading-[1.1] mb-6">
-                Sikho with
+                Perform with
                 <br />
                 Kahani Events
               </h1>
