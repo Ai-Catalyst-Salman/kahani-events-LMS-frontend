@@ -51,10 +51,36 @@ function CourseCard({ course }) {
   );
 }
 
+function DepartmentCard({ department, onClick }) {
+  return (
+    <div onClick={onClick} className="card p-6 flex flex-col gap-4 cursor-pointer group hover:-translate-y-1 transition-all duration-300">
+      <div className="h-2 -mx-6 -mt-6 mb-0 rounded-t-2xl bg-kahani-secondary/50 group-hover:bg-kahani-primary transition-colors" />
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-xl bg-kahani-primary/10 flex items-center justify-center flex-shrink-0 text-kahani-primary">
+          {/* Folder Icon */}
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-heading text-lg font-bold text-kahani-text group-hover:text-kahani-primary transition-colors duration-200">
+            {department}
+          </h2>
+          <p className="text-xs text-kahani-text-muted mt-0.5">Explore courses</p>
+        </div>
+        <svg className="w-5 h-5 text-kahani-text-muted group-hover:text-kahani-primary group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function Courses() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState(null);
 
   useEffect(() => {
     api.get("/courses").then(({ ok, data }) => {
@@ -66,6 +92,11 @@ export default function Courses() {
       setLoading(false);
     });
   }, []);
+
+  const activeDepartments = [...new Set(courses.map(c => c.department || "General"))].sort();
+  const filteredCourses = selectedDepartment 
+    ? courses.filter(c => (c.department || "General") === selectedDepartment)
+    : [];
 
   return (
     <div className="page">
@@ -79,8 +110,7 @@ export default function Courses() {
             All Courses
           </h1>
           <p className="text-kahani-text-muted text-sm mt-2 max-w-xl">
-            Explore the full Kahani Events training library. Click any course to
-            view its videos and start learning.
+            Explore the full Kahani Events training library. Select a department to view its courses and start learning.
           </p>
         </div>
       </div>
@@ -119,11 +149,47 @@ export default function Courses() {
         )}
 
         {!loading && !error && courses.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
+          <>
+            {selectedDepartment === null ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
+                {activeDepartments.map(dept => (
+                  <DepartmentCard 
+                    key={dept} 
+                    department={dept} 
+                    onClick={() => setSelectedDepartment(dept)} 
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="animate-slide-up">
+                <div className="flex items-center gap-4 mb-8">
+                  <button 
+                    onClick={() => setSelectedDepartment(null)}
+                    className="btn-ghost flex items-center gap-2 -ml-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    Back to Departments
+                  </button>
+                  <div className="h-6 w-px bg-kahani-border" />
+                  <h2 className="font-heading text-2xl font-bold text-kahani-text">
+                    {selectedDepartment}
+                  </h2>
+                </div>
+                
+                {filteredCourses.length === 0 ? (
+                  <p className="text-kahani-text-muted">No courses found in this department.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredCourses.map((course) => (
+                      <CourseCard key={course.id} course={course} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
