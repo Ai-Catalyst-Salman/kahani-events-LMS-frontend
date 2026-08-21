@@ -323,6 +323,7 @@ function CoursesTab({ toast }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [department, setDepartment] = useState(DEPARTMENTS[0]);
+  const [progressionMode, setProgressionMode] = useState("open");
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
@@ -341,11 +342,12 @@ function CoursesTab({ toast }) {
     const { ok, data } = await api.post("/admin/courses", { 
       title, 
       description: description || null,
-      department 
+      department,
+      progression_mode: progressionMode,
     });
     if (ok) {
       toast("Course created!", "success");
-      setTitle(""); setDescription(""); setDepartment(DEPARTMENTS[0]); setShowForm(false);
+      setTitle(""); setDescription(""); setDepartment(DEPARTMENTS[0]); setProgressionMode("open"); setShowForm(false);
       load();
     } else {
       toast(data?.detail || "Failed to create course", "error");
@@ -424,6 +426,17 @@ function CoursesTab({ toast }) {
                 {DEPARTMENTS.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="input-label">Module Progression</label>
+              <select
+                className="input"
+                value={progressionMode}
+                onChange={e => setProgressionMode(e.target.value)}
+              >
+                <option value="open">Open (All modules unlocked from start)</option>
+                <option value="locked">Locked (Strict step-by-step completion)</option>
               </select>
             </div>
             <div className="flex flex-wrap gap-3 mt-2">

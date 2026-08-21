@@ -484,10 +484,12 @@ export default function CourseDetail() {
 
             <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="font-heading text-3xl font-bold text-[#1E544A]">Curriculum Sequence</h2>
-              <span className="text-xs font-bold text-[#8C345C] bg-[#8C345C]/10 px-3 py-1.5 rounded-full
-                border border-[#8C345C]/20 uppercase tracking-widest shadow-sm">
-                Strict Progression Enforced
-              </span>
+              {course.progression_mode === "locked" && (
+                <span className="text-xs font-bold text-[#8C345C] bg-[#8C345C]/10 px-3 py-1.5 rounded-full
+                  border border-[#8C345C]/20 uppercase tracking-widest shadow-sm">
+                  🔒 Strict Progression Enforced
+                </span>
+              )}
             </div>
 
             {totalVideos === 0 ? (
@@ -498,7 +500,9 @@ export default function CourseDetail() {
               <div className="flex flex-col gap-4">
                 {course.videos.map((video, index) => {
                   const completed = completedIds.has(video.id);
-                  const isLocked  = index > 0 && (!user || !completedIds.has(course.videos[index - 1].id));
+                  const isLocked  = course.progression_mode === "locked"
+                    ? index > 0 && (!user || !completedIds.has(course.videos[index - 1].id))
+                    : false;
                   return (
                       <VideoRow
                         key={video.id}
