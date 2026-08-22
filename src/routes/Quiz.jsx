@@ -2,8 +2,9 @@
 // -------------------
 // Dynamic AI Quiz page for a specific video — /quiz/:videoId
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -29,6 +30,22 @@ export default function Quiz() {
   const [cameraStatus, setCameraStatus] = useState("idle"); // idle | requesting | granted | denied
   const [stream, setStream] = useState(null);
   const videoRef = useRef(null);
+
+  // Draggable webcam widget state
+  const [isDragging, setIsDragging] = useState(false);
+  const widgetRef = useRef(null);
+
+  // Compute drag constraints: keep the full widget inside the viewport
+  const getDragConstraints = useCallback(() => {
+    if (!widgetRef.current) return { top: 0, left: 0, right: 0, bottom: 0 };
+    const { width, height } = widgetRef.current.getBoundingClientRect();
+    return {
+      top:    -window.innerHeight + height + 24, // 24px = bottom-6 initial offset
+      left:   -(window.innerWidth - width - 24), // 24px = right-6 initial offset
+      right:  0,
+      bottom: 0,
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -356,22 +373,49 @@ export default function Quiz() {
 
       </div>
 
-      {/* ── CAMERA WIDGET ── */}
+      {/* ── CAMERA WIDGET (Draggable) ── */}
       {stream && status === "ready" && cameraStatus === "granted" && (
-        <div className="fixed bottom-6 right-6 w-48 rounded-xl overflow-hidden shadow-2xl border-4 border-white bg-black z-50">
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded-md z-10">
-            <div className="w-2 h-2 rounded-full bg-[#8C345C] animate-pulse"></div>
+        <motion.div
+          ref={widgetRef}
+          drag
+          dragMomentum={false}
+          dragElastic={0}
+          dragConstraints={getDragConstraints()}
+          onDragStart={() => setIsDragging(true)}
+          onDragEnd={() => setIsDragging(false)}
+          className={`fixed bottom-6 right-6 w-48 rounded-xl overflow-hidden shadow-2xl border-4 border-white bg-black z-50
+            select-none touch-none
+            ${isDragging ? "cursor-grabbing shadow-[0_20px_60px_rgba(0,0,0,0.4)] scale-105" : "cursor-grab"}`}
+          style={{ x: 0, y: 0 }}
+          whileHover={{ boxShadow: "0 20px 50px rgba(0,0,0,0.35)" }}
+          title="Drag to reposition"
+        >
+          {/* LIVE badge */}
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded-md z-10 pointer-events-none">
+            <div className="w-2 h-2 rounded-full bg-[#8C345C] animate-pulse" />
             <span className="text-[10px] text-white font-bold tracking-wider uppercase">Live</span>
           </div>
+
+          {/* Drag hint — fades in only when not dragging */}
+          {!isDragging && (
+            <div className="absolute bottom-2 right-2 z-10 pointer-events-none">
+              <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 9l4-4 4 4M8 15l4 4 4-4" />
+              </svg>
+            </div>
+          )}
+
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            className="w-full h-auto object-cover transform -scale-x-100"
+            className="w-full h-auto object-cover transform -scale-x-100 pointer-events-none"
           />
-        </div>
+        </motion.div>
       )}
+
     </div>
   );
 }
